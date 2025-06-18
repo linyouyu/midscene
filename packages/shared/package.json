@@ -1,6 +1,6 @@
 {
   "name": "@midscene/shared",
-  "version": "0.17.5",
+  "version": "0.19.1",
   "repository": "https://github.com/web-infra-dev/midscene",
   "homepage": "https://midscenejs.com/",
   "types": "./dist/types/index.d.ts",
@@ -67,12 +67,13 @@
     "@ui-tars/shared": "1.2.0",
     "dotenv": "16.4.5",
     "rimraf": "~3.0.2",
-    "typescript": "^5.8.2",
+    "typescript": "^5.8.3",
     "vitest": "3.0.5"
   },
   "sideEffects": [],
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
-  }
+  },
+  "license": "MIT"
 }

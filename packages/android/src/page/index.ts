@@ -4,12 +4,17 @@ import path from 'node:path';
 import { type Point, type Size, getAIConfig } from '@midscene/core';
 import type { PageType } from '@midscene/core';
 import { getTmpFile, sleep } from '@midscene/core/utils';
-import { MIDSCENE_ADB_PATH } from '@midscene/shared/env';
+import {
+  MIDSCENE_ADB_PATH,
+  MIDSCENE_ADB_REMOTE_HOST,
+  MIDSCENE_ADB_REMOTE_PORT,
+  MIDSCENE_ANDROID_IME_STRATEGY,
+} from '@midscene/shared/env';
 import type { ElementInfo } from '@midscene/shared/extractor';
 import { isValidPNGImageBuffer, resizeImg } from '@midscene/shared/img';
 import { getDebug } from '@midscene/shared/logger';
 import { repeat } from '@midscene/shared/utils';
-import type { AndroidDevicePage } from '@midscene/web';
+import type { AndroidDeviceInputOpt, AndroidDevicePage } from '@midscene/web';
 import { ADB } from 'appium-adb';
 
 const androidScreenshotPath = '/data/local/tmp/midscene_screenshot.png';
@@ -19,6 +24,12 @@ const defaultFastScrollDuration = 100;
 const defaultNormalScrollDuration = 1000;
 
 export const debugPage = getDebug('android:device');
+export type AndroidDeviceOpt = {
+  androidAdbPath?: string;
+  remoteAdbHost?: string;
+  remoteAdbPort?: number;
+  imeStrategy?: 'always-yadb' | 'yadb-for-non-ascii';
+} & AndroidDeviceInputOpt;
 
 export class AndroidDevice implements AndroidDevicePage {
   private deviceId: string;
@@ -29,11 +40,13 @@ export class AndroidDevice implements AndroidDevicePage {
   private connectingAdb: Promise<ADB> | null = null;
   pageType: PageType = 'android';
   uri: string | undefined;
+  options?: AndroidDeviceOpt;
 
-  constructor(deviceId: string) {
+  constructor(deviceId: string, options?: AndroidDeviceOpt) {
     assert(deviceId, 'deviceId is required for AndroidDevice');
 
     this.deviceId = deviceId;
+    this.options = options;
   }
 
   public async connect(): Promise<ADB> {
@@ -57,19 +70,22 @@ export class AndroidDevice implements AndroidDevicePage {
       debugPage(`Initializing ADB with device ID: ${this.deviceId}`);
 
       try {
-        const androidAdbPath = getAIConfig(MIDSCENE_ADB_PATH);
+        const androidAdbPath =
+          this.options?.androidAdbPath || getAIConfig(MIDSCENE_ADB_PATH);
+        const remoteAdbHost =
+          this.options?.remoteAdbHost || getAIConfig(MIDSCENE_ADB_REMOTE_HOST);
+        const remoteAdbPort =
+          this.options?.remoteAdbPort || getAIConfig(MIDSCENE_ADB_REMOTE_PORT);
 
-        // If `androidAdbPath` exists, use `newADB()`
-        this.adb = androidAdbPath
-          ? await new ADB({
-              udid: this.deviceId,
-              adbExecTimeout: 60000,
-              executable: { path: androidAdbPath, defaultArgs: [] },
-            })
-          : await ADB.createADB({
-              udid: this.deviceId,
-              adbExecTimeout: 60000,
-            });
+        this.adb = await new ADB({
+          udid: this.deviceId,
+          adbExecTimeout: 60000,
+          executable: androidAdbPath
+            ? { path: androidAdbPath, defaultArgs: [] }
+            : undefined,
+          remoteAdbHost: remoteAdbHost || undefined,
+          remoteAdbPort: remoteAdbPort ? Number(remoteAdbPort) : undefined,
+        });
 
         const size = await this.getScreenSize();
         console.log(`
@@ -182,6 +198,7 @@ ${Object.keys(size)
     );
   }
 
+  // @deprecated
   async getElementsInfo(): Promise<ElementInfo[]> {
     return [];
   }
@@ -367,7 +384,8 @@ ${Object.keys(size)
 
   get keyboard() {
     return {
-      type: (text: string) => this.keyboardType(text),
+      type: (text: string, options?: AndroidDeviceInputOpt) =>
+        this.keyboardType(text, options),
       press: (
         action:
           | { key: string; command?: string }
@@ -543,21 +561,33 @@ ${Object.keys(size)
     }
   }
 
-  private async keyboardType(text: string): Promise<void> {
+  private async keyboardType(
+    text: string,
+    options?: AndroidDeviceInputOpt,
+  ): Promise<void> {
     if (!text) return;
     const adb = await this.getAdb();
     const isChinese = /[\p{Script=Han}\p{sc=Hani}]/u.test(text);
+    const IME_STRATEGY =
+      (this.options?.imeStrategy ||
+        getAIConfig(MIDSCENE_ANDROID_IME_STRATEGY)) ??
+      'always-yadb';
+    const isAutoDismissKeyboard =
+      options?.autoDismissKeyboard ?? this.options?.autoDismissKeyboard ?? true;
 
-    // for pure ASCII characters, directly use inputText
-    if (!isChinese) {
+    if (
+      IME_STRATEGY === 'always-yadb' ||
+      (IME_STRATEGY === 'yadb-for-non-ascii' && isChinese)
+    ) {
+      await this.execYadb(text);
+    } else {
+      // for pure ASCII characters, directly use inputText
       await adb.inputText(text);
-      await adb.hideKeyboard();
-      return;
     }
 
-    // for non-ASCII characters, use yadb
-    await this.execYadb(text);
-    await adb.hideKeyboard();
+    if (isAutoDismissKeyboard === true) {
+      await adb.hideKeyboard();
+    }
   }
 
   private async keyboardPress(key: string): Promise<void> {

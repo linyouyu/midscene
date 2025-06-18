@@ -42,7 +42,6 @@ import {
 import { sleep } from '@midscene/core/utils';
 import { NodeType } from '@midscene/shared/constants';
 import type { ElementInfo } from '@midscene/shared/extractor';
-import { getElementInfosScriptContent } from '@midscene/shared/fs';
 import { getDebug } from '@midscene/shared/logger';
 import { assert } from '@midscene/shared/utils';
 import type { WebElementInfo } from '../web-element';
@@ -182,7 +181,9 @@ export class PageTaskExecutor {
 
   public async convertPlanToExecutable(
     plans: PlanningAction[],
-    opts?: { cacheable?: boolean },
+    opts?: {
+      cacheable?: boolean;
+    },
   ) {
     const tasks: ExecutionTaskApply[] = [];
     plans.forEach((plan) => {
@@ -233,7 +234,7 @@ export class PageTaskExecutor {
               type: 'screenshot',
               ts: shotTime,
               screenshot: pageContext.screenshotBase64,
-              timing: 'before locate',
+              timing: 'before Insight',
             };
             task.recorder = [recordItem];
 
@@ -284,8 +285,6 @@ export class PageTaskExecutor {
                 })
               ).element;
 
-            const aiCost = Date.now() - startTime;
-
             // update cache
             let currentXpaths: string[] | undefined;
             if (
@@ -330,7 +329,6 @@ export class PageTaskExecutor {
                 originalXpaths: xpaths,
                 currentXpaths,
               },
-              aiCost,
             };
           },
         };
@@ -350,6 +348,18 @@ export class PageTaskExecutor {
               insightDump = dump;
             };
             this.insight.onceDumpUpdatedFn = dumpCollector;
+            const shotTime = Date.now();
+            const pageContext = await this.insight.contextRetrieverFn('assert');
+            task.pageContext = pageContext;
+
+            const recordItem: ExecutionRecorderItem = {
+              type: 'screenshot',
+              ts: shotTime,
+              screenshot: pageContext.screenshotBase64,
+              timing: 'before Insight',
+            };
+            task.recorder = [recordItem];
+
             const assertion = await this.insight.assert(
               assertPlan.param.assertion,
             );
@@ -370,6 +380,7 @@ export class PageTaskExecutor {
 
             return {
               output: assertion,
+              pageContext,
               log: {
                 dump: insightDump,
               },
@@ -393,11 +404,11 @@ export class PageTaskExecutor {
                 if (!taskParam || !taskParam.value) {
                   return;
                 }
-
-                await this.page.keyboard.type(taskParam.value);
-              } else {
-                await this.page.keyboard.type(taskParam.value);
               }
+
+              await this.page.keyboard.type(taskParam.value, {
+                autoDismissKeyboard: taskParam.autoDismissKeyboard,
+              });
             },
           };
         tasks.push(taskActionInput);
@@ -674,7 +685,7 @@ export class PageTaskExecutor {
       type: 'screenshot',
       ts: shotTime,
       screenshot: pageContext.screenshotBase64,
-      timing: 'before planning',
+      timing: 'before Planning',
     };
 
     executorContext.task.recorder = [recordItem];
@@ -879,7 +890,6 @@ export class PageTaskExecutor {
           size: pageContext.size,
         });
 
-        const aiCost = Date.now() - startTime;
         const { actions, action_summary } = planResult;
         this.appendConversationHistory({
           role: 'assistant',
@@ -897,7 +907,6 @@ export class PageTaskExecutor {
           cache: {
             hit: false,
           },
-          aiCost,
         };
       },
     };
@@ -908,7 +917,9 @@ export class PageTaskExecutor {
   async runPlans(
     title: string,
     plans: PlanningAction[],
-    opts?: { cacheable?: boolean },
+    opts?: {
+      cacheable?: boolean;
+    },
   ): Promise<ExecutionResult> {
     const taskExecutor = new Executor(title, {
       onTaskStart: this.onTaskStartCallback,

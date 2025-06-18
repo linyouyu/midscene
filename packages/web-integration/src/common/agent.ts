@@ -5,7 +5,9 @@ import {
   type AgentWaitForOpt,
   type DetailedLocateParam,
   type ExecutionDump,
+  type ExecutionRecorderItem,
   type ExecutionTask,
+  type ExecutionTaskLog,
   type Executor,
   type GroupedActionDump,
   Insight,
@@ -39,8 +41,9 @@ import { getAIConfigInBoolean, vlLocateMode } from '@midscene/shared/env';
 import { getDebug } from '@midscene/shared/logger';
 import { assert } from '@midscene/shared/utils';
 import { PageTaskExecutor } from '../common/tasks';
-import type { PuppeteerWebPage } from '../puppeteer';
+import type { PuppeteerAgentOpt, PuppeteerWebPage } from '../puppeteer';
 import type { WebElementInfo } from '../web-element';
+import type { AndroidDeviceInputOpt } from './page';
 import { buildPlans } from './plan-builder';
 import { TaskCache } from './task-cache';
 import {
@@ -52,6 +55,7 @@ import {
 } from './ui-utils';
 import { printReportMsg, reportFileName } from './utils';
 import { type WebUIContext, parseContextFromWebPage } from './utils';
+import { trimContextByViewport } from './utils';
 
 const debug = getDebug('web-integration');
 
@@ -84,8 +88,6 @@ export interface PageAgentOpt {
   autoPrintReportMsg?: boolean;
   onTaskStartTip?: OnTaskStartTip;
   aiActionContext?: string;
-  waitForNavigationTimeout?: number;
-  waitForNetworkIdleTimeout?: number;
 }
 
 export class PageAgent<PageType extends WebPage = WebPage> {
@@ -129,10 +131,10 @@ export class PageAgent<PageType extends WebPage = WebPage> {
       this.page.pageType === 'playwright'
     ) {
       (this.page as PuppeteerWebPage).waitForNavigationTimeout =
-        this.opts.waitForNavigationTimeout ||
+        (this.opts as PuppeteerAgentOpt).waitForNavigationTimeout ||
         DEFAULT_WAIT_FOR_NAVIGATION_TIMEOUT;
       (this.page as PuppeteerWebPage).waitForNetworkIdleTimeout =
-        this.opts.waitForNetworkIdleTimeout ||
+        (this.opts as PuppeteerAgentOpt).waitForNetworkIdleTimeout ||
         DEFAULT_WAIT_FOR_NETWORK_IDLE_TIMEOUT;
     }
 
@@ -189,8 +191,10 @@ export class PageAgent<PageType extends WebPage = WebPage> {
   }
 
   appendExecutionDump(execution: ExecutionDump) {
+    // use trimContextByViewport to process execution
+    const trimmedExecution = trimContextByViewport(execution);
     const currentDump = this.dump;
-    currentDump.executions.push(execution);
+    currentDump.executions.push(trimmedExecution);
   }
 
   dumpDataString() {
@@ -303,7 +307,11 @@ export class PageAgent<PageType extends WebPage = WebPage> {
     return output;
   }
 
-  async aiInput(value: string, locatePrompt: string, opt?: LocateOption) {
+  async aiInput(
+    value: string,
+    locatePrompt: string,
+    opt?: AndroidDeviceInputOpt & LocateOption,
+  ) {
     assert(
       typeof value === 'string',
       'input value must be a string, use empty string if you want to clear the input',
@@ -315,11 +323,14 @@ export class PageAgent<PageType extends WebPage = WebPage> {
     );
     const plans = buildPlans('Input', detailedLocateParam, {
       value,
+      autoDismissKeyboard: opt?.autoDismissKeyboard,
     });
     const { executor, output } = await this.taskExecutor.runPlans(
       taskTitleStr('Input', locateParamStr(detailedLocateParam)),
       plans,
-      { cacheable: opt?.cacheable },
+      {
+        cacheable: opt?.cacheable,
+      },
     );
     this.afterTaskRunning(executor);
     return output;
@@ -652,5 +663,76 @@ export class PageAgent<PageType extends WebPage = WebPage> {
 
   async destroy() {
     await this.page.destroy();
+  }
+
+  async logScreenshot(
+    title?: string,
+    opt?: {
+      content: string;
+    },
+  ) {
+    // 1. screenshot
+    const base64 = await this.page.screenshotBase64();
+    const now = Date.now();
+    // 2. build recorder
+    const recorder: ExecutionRecorderItem[] = [
+      {
+        type: 'screenshot',
+        ts: now,
+        screenshot: base64,
+      },
+    ];
+    // 3. build ExecutionTaskLog
+    const task: ExecutionTaskLog = {
+      type: 'Log',
+      subType: 'Screenshot',
+      status: 'finished',
+      recorder,
+      timing: {
+        start: now,
+        end: now,
+        cost: 0,
+      },
+      param: {
+        content: opt?.content || '',
+      },
+      executor: async () => {},
+    };
+    // 4. build ExecutionDump
+    const executionDump: ExecutionDump = {
+      sdkVersion: '',
+      logTime: now,
+      model_name: '',
+      model_description: '',
+      name: `Log - ${title || 'untitled'}`,
+      description: opt?.content || '',
+      tasks: [task],
+    };
+    // 5. append to execution dump
+    this.appendExecutionDump(executionDump);
+    this.writeOutActionDumps();
+  }
+
+  _unstableLogContent() {
+    const { groupName, groupDescription, executions } = this.dump;
+    const newExecutions = Array.isArray(executions)
+      ? executions.map((execution: any) => {
+          const { tasks, ...restExecution } = execution;
+          let newTasks = tasks;
+          if (Array.isArray(tasks)) {
+            newTasks = tasks.map((task: any) => {
+              // only remove pageContext and log from task
+              const { pageContext, log, ...restTask } = task;
+              return restTask;
+            });
+          }
+          return { ...restExecution, ...(newTasks ? { tasks: newTasks } : {}) };
+        })
+      : [];
+    return {
+      groupName,
+      groupDescription,
+      executions: newExecutions,
+    };
   }
 }

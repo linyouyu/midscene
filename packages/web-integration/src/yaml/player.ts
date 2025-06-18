@@ -20,6 +20,7 @@ import type {
   MidsceneYamlFlowItemAITap,
   MidsceneYamlFlowItemAIWaitFor,
   MidsceneYamlFlowItemEvaluateJavaScript,
+  MidsceneYamlFlowItemLogScreenshot,
   MidsceneYamlFlowItemSleep,
   MidsceneYamlScript,
   MidsceneYamlScriptEnv,
@@ -36,9 +37,11 @@ export class ScriptPlayer<T extends MidsceneYamlScriptEnv> {
   public result: Record<string, any>;
   private unnamedResultIndex = 0;
   public output?: string | null;
+  public unstableLogContent?: string | null;
   public errorInSetup?: Error;
   private pageAgent: PageAgent | null = null;
   public agentStatusTip?: string;
+  public target?: MidsceneYamlScriptEnv;
   constructor(
     private script: MidsceneYamlScript,
     private setupAgent: (platform: T) => Promise<{
@@ -49,14 +52,28 @@ export class ScriptPlayer<T extends MidsceneYamlScriptEnv> {
   ) {
     this.result = {};
 
-    const target = script.target || script.web || script.android;
+    this.target = script.target || script.web || script.android;
 
     if (ifInBrowser) {
       this.output = undefined;
-    } else if (target?.output) {
-      this.output = resolve(process.cwd(), target.output);
+    } else if (this.target?.output) {
+      this.output = resolve(process.cwd(), this.target.output);
     } else {
       this.output = join(getMidsceneRunSubDir('output'), `${process.pid}.json`);
+    }
+
+    if (ifInBrowser) {
+      this.unstableLogContent = undefined;
+    } else if (typeof this.target?.unstableLogContent === 'string') {
+      this.unstableLogContent = resolve(
+        process.cwd(),
+        this.target.unstableLogContent,
+      );
+    } else if (this.target?.unstableLogContent === true) {
+      this.unstableLogContent = join(
+        getMidsceneRunSubDir('output'),
+        'unstableLogContent.json',
+      );
     }
 
     this.taskStatusList = (script.tasks || []).map((task, taskIndex) => ({
@@ -74,7 +91,7 @@ export class ScriptPlayer<T extends MidsceneYamlScriptEnv> {
     }
     this.result[keyToUse] = value;
 
-    this.flushResult();
+    return this.flushResult();
   }
 
   private setPlayerStatus(status: ScriptPlayerStatusValue, error?: Error) {
@@ -121,6 +138,18 @@ export class ScriptPlayer<T extends MidsceneYamlScriptEnv> {
         mkdirSync(outputDir, { recursive: true });
       }
       writeFileSync(output, JSON.stringify(this.result, undefined, 2));
+    }
+  }
+
+  private flushUnstableLogContent() {
+    if (this.unstableLogContent) {
+      const content = this.pageAgent?._unstableLogContent();
+      const filePath = resolve(process.cwd(), this.unstableLogContent);
+      const outputDir = dirname(filePath);
+      if (!existsSync(outputDir)) {
+        mkdirSync(outputDir, { recursive: true });
+      }
+      writeFileSync(filePath, JSON.stringify(content, null, 2));
     }
   }
 
@@ -282,11 +311,19 @@ export class ScriptPlayer<T extends MidsceneYamlScriptEnv> {
           evaluateJavaScriptTask.javascript,
         );
         this.setResult(evaluateJavaScriptTask.name, result);
+      } else if (
+        'logScreenshot' in (flowItem as MidsceneYamlFlowItemLogScreenshot)
+      ) {
+        const logScreenshotTask = flowItem as MidsceneYamlFlowItemLogScreenshot;
+        await agent.logScreenshot(logScreenshotTask.logScreenshot, {
+          content: logScreenshotTask.content || '',
+        });
       } else {
         throw new Error(`unknown flowItem: ${JSON.stringify(flowItem)}`);
       }
     }
     this.reportFile = agent.reportFile;
+    await this.flushUnstableLogContent();
   }
 
   async run() {

@@ -7,7 +7,7 @@ export interface LocateOption {
 }
 
 export interface InsightExtractOption {
-  domIncluded?: boolean;
+  domIncluded?: boolean | 'visible-only';
   screenshotIncluded?: boolean;
 }
 
@@ -43,6 +43,7 @@ export interface MidsceneYamlTask {
 
 export interface MidsceneYamlScriptEnvBase {
   output?: string;
+  unstableLogContent?: boolean | string;
   aiActionContext?: string;
 }
 
@@ -162,6 +163,11 @@ export interface MidsceneYamlFlowItemSleep {
   sleep: number;
 }
 
+export interface MidsceneYamlFlowItemLogScreenshot {
+  logScreenshot?: string; // optional, the title of the screenshot
+  content?: string;
+}
+
 export type MidsceneYamlFlowItem =
   | MidsceneYamlFlowItemAIAction
   | MidsceneYamlFlowItemAIAssert
@@ -173,7 +179,8 @@ export type MidsceneYamlFlowItem =
   | MidsceneYamlFlowItemAIInput
   | MidsceneYamlFlowItemAIKeyboardPress
   | MidsceneYamlFlowItemAIScroll
-  | MidsceneYamlFlowItemSleep;
+  | MidsceneYamlFlowItemSleep
+  | MidsceneYamlFlowItemLogScreenshot;
 
 export interface FreeFn {
   name: string;

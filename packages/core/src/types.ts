@@ -24,9 +24,10 @@ export type {
 export * from './yaml';
 
 export type AIUsageInfo = Record<string, any> & {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
+  prompt_tokens: number | undefined;
+  completion_tokens: number | undefined;
+  total_tokens: number | undefined;
+  time_cost: number | undefined;
 };
 
 /**
@@ -76,8 +77,8 @@ export type AIElementResponse =
   | AIElementLocatorResponse
   | AIElementCoordinatesResponse;
 
-export interface AIDataExtractionResponse<DataShape> {
-  data: DataShape;
+export interface AIDataExtractionResponse<DataDemand> {
+  data: DataDemand;
   errors?: string[];
 }
 
@@ -121,9 +122,6 @@ export interface AgentDescribeElementAtPointResult {
 export abstract class UIContext<ElementType extends BaseElement = BaseElement> {
   abstract screenshotBase64: string;
 
-  // @deprecated('use tree instead')
-  abstract content: ElementType[];
-
   abstract tree: ElementTreeNode<ElementType>;
 
   abstract size: Size;
@@ -141,14 +139,6 @@ export interface InsightOptions {
   taskInfo?: Omit<InsightTaskInfo, 'durationMs'>;
   aiVendorFn?: CallAIFn;
 }
-
-// export interface UISection {
-//   name: string;
-//   description: string;
-//   sectionCharacteristics: string;
-//   rect: Rect;
-//   content: BaseElement[];
-// }
 
 export type EnsureObject<T> = { [K in keyof T]: any };
 
@@ -308,6 +298,7 @@ export type PlanningActionParamHover = null;
 export type PlanningActionParamRightClick = null;
 export interface PlanningActionParamInputOrKeyPress {
   value: string;
+  autoDismissKeyboard?: boolean;
 }
 
 export type PlanningActionParamScroll = scrollParam;
@@ -360,7 +351,12 @@ export interface ExecutionRecorderItem {
   timing?: string;
 }
 
-export type ExecutionTaskType = 'Planning' | 'Insight' | 'Action' | 'Assertion';
+export type ExecutionTaskType =
+  | 'Planning'
+  | 'Insight'
+  | 'Action'
+  | 'Assertion'
+  | 'Log';
 
 export interface ExecutorContext {
   task: ExecutionTask;
@@ -421,7 +417,6 @@ export type ExecutionTask<
       start: number;
       end?: number;
       cost?: number;
-      aiCost?: number;
     };
     usage?: AIUsageInfo;
   };
@@ -504,6 +499,18 @@ export type ExecutionTaskActionApply<ActionParam = any> = ExecutionTaskApply<
 >;
 
 export type ExecutionTaskAction = ExecutionTask<ExecutionTaskActionApply>;
+
+/*
+task - Log
+*/
+
+export type ExecutionTaskLogApply<
+  LogParam = {
+    content: string;
+  },
+> = ExecutionTaskApply<'Log', LogParam, void, void>;
+
+export type ExecutionTaskLog = ExecutionTask<ExecutionTaskLogApply>;
 
 /*
 task - planning
