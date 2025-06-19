@@ -1,0 +1,23 @@
+{
+  "name": "@web-agent/special-controls-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@web-agent/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.1",
+    "@types/node": "^16.11.7",
+    "vitest": "^1.3.1",
+    "@vitest/ui": "^1.3.1"
+  }
+}

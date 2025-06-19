@@ -875,3 +875,11 @@ Midscene's approach to AI integration is notable for its adaptability, supportin
 The framework's commitment to testing and evaluation, particularly through the dedicated `packages/evaluation` suite and CI integration, underscores a focus on the reliability and continuous improvement of its AI capabilities. While not featuring a traditional plugin system for all aspects, Midscene offers significant extensibility through its SDK, YAML scripting, configurable AI services, and abstracted browser control interfaces.
 
 Overall, Midscene represents a significant step towards more intelligent, adaptable, and accessible UI automation. By combining the understanding capabilities of modern AI with robust engineering practices, it provides a powerful platform for developers and testers to tackle complex automation challenges on both web and mobile platforms. Its ongoing development, particularly in refining AI interactions and expanding its integration capabilities, will likely solidify its position as a leading solution in the evolving landscape of AI-powered automation. As AI models continue to advance, frameworks like Midscene that are designed to flexibly incorporate them will become increasingly vital.
+
+## Web Agent Sub-System
+
+A new sub-system, 'Web Agent', has been introduced to enable a decoupled frontend/backend approach for browser automation. The frontend components are designed to be injectable into browser environments for capturing page state (DOM, screenshots) and executing action plans. The backend component is responsible for receiving this state and leveraging Midscene's core AI planning capabilities to generate these plans.
+
+This system also includes a 'Special Controls Plugin' to provide targeted interaction hints for complex UI elements, aiming to improve the robustness of AI-generated plans.
+
+For detailed architecture and usage of the Web Agent components, please refer to the [Web Agent Documentation](./packages/web-agent/README.md).
